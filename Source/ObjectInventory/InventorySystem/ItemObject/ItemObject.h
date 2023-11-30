@@ -53,7 +53,7 @@ struct FItemValues
 	bool bIsStackable = false;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
-	int MaxStackSize = 120;
+	int MaxStackSize = -1;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere)
 	EItemType ItemType = EItemType::IT_Misc;

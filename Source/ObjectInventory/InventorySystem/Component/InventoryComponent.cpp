@@ -33,25 +33,39 @@ void UInventoryComponent::PreAddItem_Implementation(UItemObject* InItem, UItemOb
 {
 	if (!InItem || !TargetDestination) return;
 	UE_LOG(LogTemp, Warning, TEXT(" -->  Adding item: %s"), *InItem->GetItemTag().ToString());
+	int StackSizeAfter = InItem->GetItemValues().StackCount;
 	
 	for (UItemObject* Item : TargetDestination->GetItemContainer())
 	{
-		UE_LOG(LogTemp, Error, TEXT("Items: %s"), *Item->GetItemValues().ItemName.ToString());
-		
-		if (Item->GetItemValues().ItemTag == InItem->GetItemValues().ItemTag && Item->GetItemValues().bIsStackable)
+		if (Item->GetItemValues().ItemTag == InItem->GetItemValues().ItemTag)
 		{
-			const int NewStackCount = Item->GetItemValues().StackCount + InItem->GetItemValues().StackCount;
-			Item->SetStackCount(NewStackCount, false);
-			OnItemStacked.Broadcast(Item);
-			OnInventoryChanged.Broadcast(TargetDestination);
-			return;
+			const int MaxStackSize = Item->GetItemValues().MaxStackSize <= 0 ? 2147483647 : Item->GetItemValues().MaxStackSize;
+			const int CurrentStackSize = Item->GetItemValues().StackCount + InItem->GetItemValues().StackCount;
+			const bool bCanStack = Item->GetItemValues().bIsStackable;
+			
+			if (bCanStack)
+			{
+				StackSizeAfter = CurrentStackSize - MaxStackSize;
+				int NewStackSize = CurrentStackSize;
+				if (CurrentStackSize > MaxStackSize)
+				{
+					NewStackSize = MaxStackSize;
+				}
+				
+				Item->SetStackCount(NewStackSize, false);
+				OnItemStacked.Broadcast(Item);
+				OnInventoryChanged.Broadcast(TargetDestination);
+
+				if (StackSizeAfter <= 0) return;
+			}
 		}
 	}
 	FItemValues ItemValues = InItem->GetItemValues();
+	ItemValues.StackCount = StackSizeAfter;
 	ItemValues.SerialNumber = FGuid::NewGuid();
 	InItem->SetItemValues(ItemValues);
 	
-	AddItemToInventory(InItem, Inventory);
+	AddItemToInventory(InItem, TargetDestination);
 }
 
 void UInventoryComponent::AddItemToInventory(UItemObject* InItem, UItemObject* TargetDestination)
@@ -121,27 +135,7 @@ void UInventoryComponent::TransferItem(UItemObject* ItemToTransfer, UItemObject*
 	}
 
 	// Add item to target destination
-	for (UItemObject* Item : TargetDestination->GetItemContainer())
-	{
-		if (Item->GetItemValues().ItemTag == ItemToTransfer->GetItemValues().ItemTag && Item->GetItemValues().bIsStackable)
-		{
-			const int NewStackCount = Item->GetItemValues().StackCount + ItemToTransfer->GetItemValues().StackCount;
-			Item->SetStackCount(NewStackCount, false);
-			OnItemStacked.Broadcast(Item);
-			OnInventoryChanged.Broadcast(Inventory);
-			UE_LOG(LogTemp, Warning, TEXT("--> TRANSFER: Item already exists, increasing the stack count"));
-			return;
-		}
-	}
-
-	UE_LOG(LogTemp, Warning, TEXT("--> TRANSFER: Adding the Item to the container"));
-	
-	TArray<UItemObject*> Objects = TargetDestination->GetItemValues().ItemContainer;
-	Objects.Add(ItemToTransfer);
-	TargetDestination->SetItemContainer(Objects);
-	ItemToTransfer->SetParentContainer(TargetDestination);
-	
-	TargetDestination->OnItemAddedToContainer.Broadcast(ItemToTransfer);
+	PreAddItem(ItemToTransfer, TargetDestination);
 }
 
 void UInventoryComponent::BeginPlay()
